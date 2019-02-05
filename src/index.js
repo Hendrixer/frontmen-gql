@@ -1,35 +1,51 @@
-import { ApolloServer } from 'apollo-server'
+import { ApolloServer, makeExecutableSchema } from 'apollo-server'
 import gql from 'graphql-tag'
-import fetch from 'node-fetch'
+import { createGithubSchema, createGithubResolvers } from './github'
+import { mergeSchemas } from 'graphql-tools'
 
 const typeDefs = gql`
-  type Post {
-    link: String
-    title: String!
-    field: Int!
+  type User {
+    username: String
   }
 
   type Query {
-    posts(limit: Int): [Post]!
+    me: User
   }
 `
 
-const server = new ApolloServer({
+const localSchema = makeExecutableSchema({
   typeDefs,
   resolvers: {
     Query: {
-      async posts(_, { limit }) {
-        const posts = await fetch('https://www.reddit.com/.json').then(d =>
-          d.json()
-        )
-
-        return posts.data.children.map(p => p.data)
+      me() {
+        console.log('yest')
+        return {}
       }
     }
   }
 })
 
-server
-  .listen()
-  .then(({ url }) => console.log(`server on ${url}`))
-  .catch(console.error.bind(console))
+const createServer = async () => {
+  const extendedUser = gql`
+    extend type User {
+      profile: Github_User
+    }
+  `
+  const { transformed, og } = await createGithubSchema()
+
+  const finalSchema = mergeSchemas({
+    schemas: [localSchema, transformed, extendedUser],
+    resolvers: createGithubResolvers(og)
+  })
+
+  const server = new ApolloServer({
+    schema: finalSchema
+  })
+
+  server
+    .listen()
+    .then(({ url }) => console.log(`server on ${url}`))
+    .catch(console.error.bind(console))
+}
+
+createServer()
